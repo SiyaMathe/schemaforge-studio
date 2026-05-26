@@ -1,24 +1,16 @@
 -- =============================================================================
 -- SchemaForge Studio — Khulisa Commerce
 -- Order Management Stored Procedures
--- Demonstrates: SAVE TRANSACTION, nested transactions, OUTPUT clause,
---               MERGE, optimistic concurrency, TRY/CATCH, XACT_ABORT
 -- =============================================================================
 
 USE KhulisaCommerce;
 GO
 
--- =============================================================================
--- SP 1: Place a new order
---       Validates stock, deducts inventory, inserts Order + OrderLines,
---       applies discount, all within a single ACID transaction
--- =============================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_PlaceOrder
     @CustomerID         INT,
     @ShippingAddressID  INT,
     @DiscountCode       VARCHAR(50)     = NULL,
     @OrderLinesJson     NVARCHAR(MAX),
-    -- JSON: [{"VariantID":1,"Quantity":2}, ...]
     @OrderID            INT             OUTPUT,
     @TotalAmount        DECIMAL(10,2)   OUTPUT
 AS
@@ -85,6 +77,9 @@ BEGIN
         END;
     END;
 
+    -- Explicitly terminate setup phase before transaction engine locks
+    PRINT 'Validations passed. Beginning stock allocation.';
+
     BEGIN TRANSACTION PlaceOrder;
     BEGIN TRY
 
@@ -96,21 +91,25 @@ BEGIN
         UnitPrice    DECIMAL(10,2)
         );
 
+        -- Isolated query statement to satisfy the parser
         INSERT INTO @StockCheck
         (VariantID, AvailableQty, RequestedQty, UnitPrice)
     SELECT
         sl.VariantID,
         sl.QuantityOnHand,
         l.Quantity,
-        p.BasePrice + pv.PriceAdjustment AS UnitPrice
+        (p.BasePrice + pv.PriceAdjustment) AS UnitPrice
     FROM @Lines l
-        JOIN dbo.StockLevel     sl ON sl.VariantID = l.VariantID
-        JOIN dbo.ProductVariant pv ON pv.VariantID = l.VariantID
-        JOIN dbo.Product        p ON p.ProductID  = pv.ProductID
-            WITH (UPDLOCK, ROWLOCK);
+        INNER JOIN dbo.StockLevel sl WITH (UPDLOCK, ROWLOCK)
+        ON sl.VariantID = l.VariantID
+        INNER JOIN dbo.ProductVariant pv
+        ON pv.VariantID = l.VariantID
+        INNER JOIN dbo.Product p
+        ON p.ProductID = pv.ProductID;
 
         -- ── Validate sufficient stock ─────────────────────────────────────────
-        DECLARE @InsufficientVariantID INT;
+        DECLARE @InsufficientVariantID INT = NULL;
+        
         SELECT TOP 1
         @InsufficientVariantID = VariantID
     FROM @StockCheck
@@ -124,7 +123,7 @@ BEGIN
     END;
 
         -- ── Calculate totals ─────────────────────────────────────────────────
-        DECLARE @Subtotal       DECIMAL(10,2);
+        DECLARE @Subtotal       DECIMAL(10,2) = 0;
         DECLARE @DiscountAmount DECIMAL(10,2) = 0;
 
         SELECT @Subtotal = SUM(UnitPrice * RequestedQty)
@@ -182,7 +181,7 @@ BEGIN
         @OrderID,
         'ORDER'
     FROM @StockCheck sc
-        JOIN dbo.StockLevel sl ON sl.VariantID = sc.VariantID;
+        INNER JOIN dbo.StockLevel sl ON sl.VariantID = sc.VariantID;
 
         -- ── Increment discount usage counter ──────────────────────────────────
         IF @DiscountID IS NOT NULL
@@ -340,7 +339,7 @@ BEGIN
         SET sl.QuantityOnHand = sl.QuantityOnHand + ol.Quantity,
             sl.UpdatedAt      = SYSUTCDATETIME()
         FROM dbo.StockLevel sl
-        JOIN dbo.OrderLine  ol ON ol.VariantID = sl.VariantID
+        INNER JOIN dbo.OrderLine ol ON ol.VariantID = sl.VariantID
         WHERE ol.OrderID = @OrderID;
 
         INSERT INTO dbo.StockMovement
@@ -357,7 +356,7 @@ BEGIN
         'RETURN',
         @Reason
     FROM dbo.OrderLine  ol
-        JOIN dbo.StockLevel sl ON sl.VariantID = ol.VariantID
+        INNER JOIN dbo.StockLevel sl ON sl.VariantID = ol.VariantID
     WHERE ol.OrderID = @OrderID;
 
         DECLARE @PointsToReverse INT = FLOOR(@TotalAmount / 10);
@@ -386,5 +385,5 @@ BEGIN
 END;
 GO
 
-PRINT 'Order management procedures created.';
+PRINT 'Order management procedures created successfully.';
 GO
