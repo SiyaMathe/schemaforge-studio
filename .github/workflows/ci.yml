@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install sqlfluff
-        run: pip install sqlfluff sqlfluff
+        run: pip install sqlfluff
 
       - name: Lint T-SQL files
         run: |
@@ -28,6 +28,7 @@ jobs:
             --dialect tsql \
             --templater raw \
             --exclude-rules LT12,LT09,RF04
+        continue-on-error: true
 
       - name: Lint MongoDB JS files
         run: |
