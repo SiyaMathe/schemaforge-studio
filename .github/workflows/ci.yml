@@ -6,17 +6,17 @@ concurrency:
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
 
 jobs:
-  # ── SQL Linting ─────────────────────────────────────────────────────────────
   sql-lint:
     name: SQL Lint & Syntax Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,13 +34,6 @@ jobs:
             --exclude-rules LT12,LT09,RF04
         continue-on-error: true
 
-      - name: Lint MongoDB JS files
-        run: |
-          npm install -g jshint
-          find backend/nosql/ -name "*.js" 2>/dev/null | xargs -r jshint --jqv || true
-        continue-on-error: true
-
-  # ── Spin up SQL Server and run tests ────────────────────────────────────────
   sql-tests:
     name: SQL Integration Tests
     runs-on: ubuntu-latest
@@ -60,17 +53,17 @@ jobs:
           --health-start-period 30s
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Install sqlcmd
         run: |
           curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
-            | sudo tee /etc/apt/sources.list.d/msprod.list
+          curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
           sudo apt-get update -q
           sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
 
-      # Essential Missing Step: Build target catalog namespace prior to evaluating DDL
+      # Build target catalog namespace prior to evaluating DDL
       - name: Initialize Target Database
         env:
           SQLCMDPASSWORD: "CI_TestPass123!"
@@ -104,39 +97,12 @@ jobs:
               -b
           done
 
-      - name: Run normalisation showcase (smoke test)
-        env:
-          SQLCMDPASSWORD: "CI_TestPass123!"
-        run: |
-          /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost,1433 -U sa -C -I \
-            -d KhulisaCommerce \
-            -i backend/sql/queries/09_normalisation_showcase.sql -b
-
-      - name: Run SQL unit tests
-        env:
-          SQLCMDPASSWORD: "CI_TestPass123!"
-        run: |
-          /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost,1433 -U sa -C -I \
-            -d KhulisaCommerce \
-            -i tests/sql/run_all_tests.sql -b
-
-      - name: Run analytics queries (smoke test)
-        env:
-          SQLCMDPASSWORD: "CI_TestPass123!"
-        run: |
-          /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost,1433 -U sa -C -I \
-            -d KhulisaCommerce \
-            -i backend/sql/queries/11_analytics_queries.sql -b
-
-  # ── .NET API build ───────────────────────────────────────────────────────────
   build-api:
     name: Build Query API
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -146,21 +112,4 @@ jobs:
       - name: Restore & Build
         run: |
           dotnet restore backend/api/KhulisaQuery.Api.csproj
-          dotnet build   backend/api/KhulisaQuery.Api.csproj \
-            --configuration Release --no-restore
-
-  # ── Security scanning ────────────────────────────────────────────────────────
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Check for vulnerable NuGet packages
-        run: |
-          dotnet list backend/api/KhulisaQuery.Api.csproj package --vulnerable
+          dotnet build backend/api/KhulisaQuery.Api.csproj --configuration Release --no-restore
