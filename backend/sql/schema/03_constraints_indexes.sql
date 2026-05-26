@@ -70,7 +70,6 @@ CREATE NONCLUSTERED INDEX IX_Order_Status_PlacedAt
 GO
 
 -- Open orders only (filtered index — dramatically smaller, faster for ops)
--- Fixed string literals to single quotes to align with QUOTED_IDENTIFIER ON
 CREATE NONCLUSTERED INDEX IX_Order_Open
     ON dbo.[Order] (PlacedAt DESC)
     INCLUDE (CustomerID, OrderStatus, TotalAmount)
@@ -159,11 +158,10 @@ CREATE NONCLUSTERED INDEX IX_SalesSummary_Date_Vendor
     INCLUDE (CategoryID, ProvinceID, NetRevenue, OrderCount);
 GO
 
--- Columnstore index on SalesSummary for fast analytical aggregations
--- (columnstore compresses and batch-processes aggregations extremely efficiently)
-CREATE NONCLUSTERED COLUMNSTORE INDEX CCI_SalesSummary
-    ON dbo.SalesSummary (SummaryDate, VendorID, CategoryID, ProvinceID,
-                         OrderCount, LineItemCount, GrossRevenue, NetRevenue, Commission);
+-- Optimized to a Clustered Columnstore Index for maximum analytical ingestion
+-- This format compresses the entire table structure cleanly without triggering parser limits
+CREATE CLUSTERED COLUMNSTORE INDEX CCI_SalesSummary
+    ON dbo.SalesSummary;
 GO
 
 PRINT 'Indexes and performance constraints applied successfully.';
