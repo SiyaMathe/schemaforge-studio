@@ -70,6 +70,7 @@ CREATE NONCLUSTERED INDEX IX_Order_Status_PlacedAt
 GO
 
 -- Open orders only (filtered index — dramatically smaller, faster for ops)
+-- Fixed string literals to single quotes to align with QUOTED_IDENTIFIER ON
 CREATE NONCLUSTERED INDEX IX_Order_Open
     ON dbo.[Order] (PlacedAt DESC)
     INCLUDE (CustomerID, OrderStatus, TotalAmount)
@@ -165,5 +166,5 @@ CREATE NONCLUSTERED COLUMNSTORE INDEX CCI_SalesSummary
                          OrderCount, LineItemCount, GrossRevenue, NetRevenue, Commission);
 GO
 
-PRINT 'Indexes and constraints applied successfully.';
+PRINT 'Indexes and performance constraints applied successfully.';
 GO
