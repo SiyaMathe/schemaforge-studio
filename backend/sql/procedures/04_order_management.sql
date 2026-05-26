@@ -49,7 +49,7 @@ BEGIN
     BEGIN
         RAISERROR('No valid order lines provided.', 16, 1);
         RETURN;
-    END
+    END;
 
     -- ── Validate customer ────────────────────────────────────────────────────
     IF NOT EXISTS (SELECT 1
@@ -58,7 +58,7 @@ BEGIN
     BEGIN
         RAISERROR('Customer %d not found or inactive.', 16, 1, @CustomerID);
         RETURN;
-    END
+    END;
 
     -- ── Resolve discount ─────────────────────────────────────────────────────
     DECLARE @DiscountID     INT     = NULL;
@@ -82,14 +82,13 @@ BEGIN
         BEGIN
             RAISERROR('Discount code ''%s'' is invalid or expired.', 16, 1, @DiscountCode);
             RETURN;
-        END
-    END
+        END;
+    END;
 
     BEGIN TRANSACTION PlaceOrder;
     BEGIN TRY
 
         -- ── Check & lock stock for each line ─────────────────────────────────
-        -- UPDLOCK + ROWLOCK: pessimistic lock to prevent concurrent oversell
         DECLARE @StockCheck TABLE (
         VariantID    INT,
         AvailableQty INT,
@@ -122,7 +121,7 @@ BEGIN
         RAISERROR('Insufficient stock for VariantID %d.', 16, 1, @InsufficientVariantID);
         ROLLBACK TRANSACTION PlaceOrder;
         RETURN;
-    END
+    END;
 
         -- ── Calculate totals ─────────────────────────────────────────────────
         DECLARE @Subtotal       DECIMAL(10,2);
@@ -167,7 +166,7 @@ BEGIN
         WHEN MATCHED THEN
             UPDATE SET
                 QuantityOnHand = target.QuantityOnHand - source.RequestedQty,
-                UpdatedAt      = SYSUTCDATETIME() -- <-- Safe termination added here
+                UpdatedAt      = SYSUTCDATETIME();
 
         -- ── Record stock movements ────────────────────────────────────────────
         INSERT INTO dbo.StockMovement
@@ -187,16 +186,20 @@ BEGIN
 
         -- ── Increment discount usage counter ──────────────────────────────────
         IF @DiscountID IS NOT NULL
-            UPDATE dbo.Discount
+        BEGIN
+        UPDATE dbo.Discount
             SET UsageCount = UsageCount + 1
             WHERE DiscountID = @DiscountID;
+    END;
 
         -- ── Award loyalty points (R10 = 1 point) ─────────────────────────────
         DECLARE @PointsEarned INT = FLOOR(@TotalAmount / 10);
         IF @PointsEarned > 0
-            UPDATE dbo.Customer
+        BEGIN
+        UPDATE dbo.Customer
             SET LoyaltyPoints = LoyaltyPoints + @PointsEarned
             WHERE CustomerID = @CustomerID;
+    END;
 
         COMMIT TRANSACTION PlaceOrder;
 
@@ -214,7 +217,6 @@ GO
 
 -- =============================================================================
 -- SP 2: Update order status with full audit trail
---       Validates legal state transitions, creates shipment on dispatch
 -- =============================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_UpdateOrderStatus
     @OrderID        INT,
@@ -237,9 +239,8 @@ BEGIN
     BEGIN
         RAISERROR('Order %d not found.', 16, 1, @OrderID);
         RETURN;
-    END
+    END;
 
-    -- ── Enforce legal state transitions ──────────────────────────────────────
     DECLARE @ValidTransition BIT = 0;
 
     SET @ValidTransition = CASE
@@ -256,7 +257,7 @@ BEGIN
         RAISERROR('Invalid status transition from ''%s'' to ''%s'' for order %d.',
                   16, 1, @CurrentStatus, @NewStatus, @OrderID);
         RETURN;
-    END
+    END;
 
     BEGIN TRANSACTION;
     BEGIN TRY
@@ -267,7 +268,6 @@ BEGIN
             Notes       = ISNULL(@Notes, Notes)
         WHERE OrderID = @OrderID;
 
-        -- Auto-create shipment record when order is dispatched
         IF @NewStatus = 'SHIPPED' AND @CourierID IS NOT NULL
         BEGIN
         INSERT INTO dbo.Shipment
@@ -281,9 +281,8 @@ BEGIN
             (ShipmentID, EventStatus, EventNote)
         VALUES
             (@ShipmentID, 'IN_TRANSIT', 'Order dispatched from warehouse');
-    END
+    END;
 
-        -- Auto-close payment capture on delivery
         IF @NewStatus = 'DELIVERED'
         BEGIN
         UPDATE dbo.Payment
@@ -291,7 +290,7 @@ BEGIN
                     PaidAt        = SYSUTCDATETIME()
                 WHERE OrderID     = @OrderID
             AND PaymentStatus = 'AUTHORISED';
-    END
+    END;
 
         COMMIT TRANSACTION;
 
@@ -305,7 +304,6 @@ GO
 
 -- =============================================================================
 -- SP 3: Process a return / refund
---       Restores stock, reverses loyalty points, marks payment refunded
 -- =============================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_ProcessReturn
     @OrderID        INT,
@@ -331,14 +329,13 @@ BEGIN
     BEGIN
         RAISERROR('Order %d cannot be refunded. Current status: %s', 16, 1, @OrderID, @OrderStatus);
         RETURN;
-    END
+    END;
 
     SET @RefundAmount = @TotalAmount;
 
     BEGIN TRANSACTION;
     BEGIN TRY
 
-        -- ── Restore stock for each order line ────────────────────────────────
         UPDATE sl
         SET sl.QuantityOnHand = sl.QuantityOnHand + ol.Quantity,
             sl.UpdatedAt      = SYSUTCDATETIME()
@@ -346,7 +343,6 @@ BEGIN
         JOIN dbo.OrderLine  ol ON ol.VariantID = sl.VariantID
         WHERE ol.OrderID = @OrderID;
 
-        -- ── Record stock movement ─────────────────────────────────────────────
         INSERT INTO dbo.StockMovement
         (
         StockLevelID, MovementType, QuantityChange, QuantityAfter,
@@ -364,16 +360,14 @@ BEGIN
         JOIN dbo.StockLevel sl ON sl.VariantID = ol.VariantID
     WHERE ol.OrderID = @OrderID;
 
-        -- ── Reverse loyalty points ────────────────────────────────────────────
         DECLARE @PointsToReverse INT = FLOOR(@TotalAmount / 10);
         IF @PointsToReverse > 0
         BEGIN
         UPDATE dbo.Customer
                 SET LoyaltyPoints = CASE WHEN (LoyaltyPoints - @PointsToReverse) < 0 THEN 0 ELSE (LoyaltyPoints - @PointsToReverse) END
                 WHERE CustomerID  = @CustomerID;
-    END
+    END;
 
-        -- ── Update order and payment status ──────────────────────────────────
         UPDATE dbo.[Order]
         SET OrderStatus = 'REFUNDED', UpdatedAt = SYSUTCDATETIME()
         WHERE OrderID   = @OrderID;
