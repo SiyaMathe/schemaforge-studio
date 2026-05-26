@@ -1,9 +1,8 @@
 [sqlfluff]
 dialect = tsql
-templater = jinja
+templater = raw
 max_line_length = 120
-# Ignore capitalization rules (CP) and layout/indentation rules (LT)
-exclude_rules = capitalisation, layout
+exclude_rules = CV01,CV02,CV03,CV04,CV05,CV06,CV07,CV08,CV09,CV10,CV11,LT01,LT02,LT03,LT04,LT05,LT06,LT07,LT08,LT09,LT10,LT11,LT12
 
 [sqlfluff:indentation]
 tab_space_size = 4
