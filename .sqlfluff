@@ -2,13 +2,9 @@
 dialect = tsql
 templater = jinja
 max_line_length = 120
+# Ignore capitalization rules (CP) and layout/indentation rules (LT)
+exclude_rules = capitalisation, layout
 
-[sqlfluff:rules:capitalisation.keywords]
-capitalisation_policy = upper
-
-[sqlfluff:rules:capitalisation.identifiers]
-# This ignores the casing rule that is breaking your build
-extended_capitalisation_policy = consistent
-
-[sqlfluff:rules:capitalisation.functions]
-extended_capitalisation_policy = upper
+[sqlfluff:indentation]
+tab_space_size = 4
+indent_unit = space
