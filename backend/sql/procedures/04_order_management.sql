@@ -167,7 +167,7 @@ BEGIN
         WHEN MATCHED THEN
             UPDATE SET
                 QuantityOnHand = target.QuantityOnHand - source.RequestedQty,
-                UpdatedAt      = SYSUTCDATETIME(); -- <-- Safe termination added here
+                UpdatedAt      = SYSUTCDATETIME() -- <-- Safe termination added here
 
         -- ── Record stock movements ────────────────────────────────────────────
         INSERT INTO dbo.StockMovement
