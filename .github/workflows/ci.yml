@@ -1,8 +1,9 @@
-
 name: CI — SchemaForge Studio
+
 concurrency:
   group: pipeline-override-${{ github.run_id }}
   cancel-in-progress: false
+
 on:
   push:
     branches: ["main", "develop"]
@@ -36,7 +37,6 @@ jobs:
       - name: Lint MongoDB JS files
         run: |
           npm install -g jshint
-          # Search only where your primary backend scripts sit, ignoring raw queries
           find backend/nosql/ -name "*.js" 2>/dev/null | xargs -r jshint --jqv || true
         continue-on-error: true
 
@@ -70,6 +70,18 @@ jobs:
           sudo apt-get update -q
           sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
 
+      # Essential Missing Step: Build target catalog namespace prior to evaluating DDL
+      - name: Initialize Target Database
+        env:
+          SQLCMDPASSWORD: "CI_TestPass123!"
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost,1433 \
+            -U sa \
+            -C \
+            -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'KhulisaCommerce') CREATE DATABASE KhulisaCommerce;" \
+            -b
+
       - name: Apply schema
         env:
           SQLCMDPASSWORD: "CI_TestPass123!"
@@ -98,6 +110,7 @@ jobs:
         run: |
           /opt/mssql-tools18/bin/sqlcmd \
             -S localhost,1433 -U sa -C -I \
+            -d KhulisaCommerce \
             -i backend/sql/queries/09_normalisation_showcase.sql -b
 
       - name: Run SQL unit tests
