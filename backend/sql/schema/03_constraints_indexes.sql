@@ -130,14 +130,4 @@ GO
 -- ANALYTICS INDEXES
 -- =============================================================================
 
-CREATE NONCLUSTERED INDEX IX_SalesSummary_Date_Vendor
-    ON dbo.SalesSummary (SummaryDate DESC, VendorID)
-    INCLUDE (CategoryID, ProvinceID, NetRevenue, OrderCount);
-GO
-
-CREATE CLUSTERED COLUMNSTORE INDEX CCI_SalesSummary
-    ON dbo.SalesSummary;
-GO
-
-PRINT 'Indexes and performance constraints applied successfully.';
-GO
+-- 1. Drop existing standard B-Tree clustered indexes or primary keys to
