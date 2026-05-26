@@ -33,7 +33,7 @@ jobs:
       - name: Lint MongoDB JS files
         run: |
           npm install -g jshint
-          jshint backend/sql/nosql/ --esversion=11
+          jshint backend/sql/nosql/ --config <(echo '{"esversion": 11}')
 
   # ── Spin up SQL Server and run tests ────────────────────────────────────────
   sql-tests:
