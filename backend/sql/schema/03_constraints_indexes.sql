@@ -1,27 +1,23 @@
 -- =============================================================================
 -- SchemaForge Studio — Khulisa Commerce
 -- Indexes & Performance Constraints
--- Demonstrates: covering indexes, filtered indexes, composite indexes,
---               partial indexes, columnstore for analytics
 -- =============================================================================
 
 USE KhulisaCommerce;
 GO
 
--- Environmental settings strictly required for creating indexes over tables
--- containing persisted computed columns or filtered constraints.
-SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 GO
 
 -- =============================================================================
 -- CUSTOMER INDEXES
 -- =============================================================================
 
--- Email lookup (login, uniqueness check)
+-- Email lookup for active customer records
 CREATE UNIQUE NONCLUSTERED INDEX IX_Customer_Email
     ON dbo.Customer (Email)
-    WHERE IsActive = 1;   -- filtered: only active customers
+    WHERE IsActive = 1;
 GO
 
 -- Customer order history lookup
@@ -34,7 +30,7 @@ GO
 -- PRODUCT CATALOG INDEXES
 -- =============================================================================
 
--- Product browse by category (most common catalogue query)
+-- Product browse by category
 CREATE NONCLUSTERED INDEX IX_Product_Category_Active
     ON dbo.Product (CategoryID, IsActive)
     INCLUDE (ProductName, ProductSlug, BasePrice, VendorID)
@@ -54,22 +50,22 @@ CREATE UNIQUE NONCLUSTERED INDEX IX_ProductVariant_SKU
 GO
 
 -- =============================================================================
--- ORDER INDEXES — high-traffic, optimise for common read patterns
+-- ORDER INDEXES
 -- =============================================================================
 
--- Customer order history (descending — most recent first)
+-- Customer order history
 CREATE NONCLUSTERED INDEX IX_Order_Customer_PlacedAt
     ON dbo.[Order] (CustomerID, PlacedAt DESC)
     INCLUDE (OrderStatus, TotalAmount);
 GO
 
--- Order status dashboard (operations team view)
+-- Order status dashboard
 CREATE NONCLUSTERED INDEX IX_Order_Status_PlacedAt
     ON dbo.[Order] (OrderStatus, PlacedAt DESC)
     INCLUDE (CustomerID, TotalAmount);
 GO
 
--- Open orders only (filtered index — dramatically smaller, faster for ops)
+-- Open orders only filter using clean character literals
 CREATE NONCLUSTERED INDEX IX_Order_Open
     ON dbo.[Order] (PlacedAt DESC)
     INCLUDE (CustomerID, OrderStatus, TotalAmount)
@@ -106,13 +102,13 @@ GO
 -- INVENTORY INDEXES
 -- =============================================================================
 
--- Stock level lookup by warehouse + variant (the common join path)
+-- Stock level lookup by warehouse + variant
 CREATE NONCLUSTERED INDEX IX_StockLevel_Warehouse_Variant
     ON dbo.StockLevel (WarehouseID, VariantID)
     INCLUDE (QuantityOnHand, ReorderPoint);
 GO
 
--- Low-stock alert (filtered — only rows needing attention)
+-- Low-stock alert
 CREATE NONCLUSTERED INDEX IX_StockLevel_LowStock
     ON dbo.StockLevel (QuantityOnHand)
     INCLUDE (WarehouseID, VariantID, ReorderPoint)
@@ -158,8 +154,7 @@ CREATE NONCLUSTERED INDEX IX_SalesSummary_Date_Vendor
     INCLUDE (CategoryID, ProvinceID, NetRevenue, OrderCount);
 GO
 
--- Optimized to a Clustered Columnstore Index for maximum analytical ingestion
--- This format compresses the entire table structure cleanly without triggering parser limits
+-- Clustered Columnstore Index for unified aggregate scanning
 CREATE CLUSTERED COLUMNSTORE INDEX CCI_SalesSummary
     ON dbo.SalesSummary;
 GO
