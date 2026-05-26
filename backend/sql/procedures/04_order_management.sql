@@ -17,7 +17,8 @@ CREATE OR ALTER PROCEDURE dbo.usp_PlaceOrder
     @CustomerID         INT,
     @ShippingAddressID  INT,
     @DiscountCode       VARCHAR(50)     = NULL,
-    @OrderLinesJson     NVARCHAR(MAX),          -- JSON: [{"VariantID":1,"Quantity":2}, ...]
+    @OrderLinesJson     NVARCHAR(MAX),
+    -- JSON: [{"VariantID":1,"Quantity":2}, ...]
     @OrderID            INT             OUTPUT,
     @TotalAmount        DECIMAL(10,2)   OUTPUT
 AS
@@ -27,11 +28,12 @@ BEGIN
 
     -- ── Parse order lines from JSON ──────────────────────────────────────────
     DECLARE @Lines TABLE (
-        VariantID   INT     NOT NULL,
-        Quantity    INT     NOT NULL
+        VariantID INT NOT NULL,
+        Quantity  INT NOT NULL
     );
 
-    INSERT INTO @Lines (VariantID, Quantity)
+    INSERT INTO @Lines
+        (VariantID, Quantity)
     SELECT
         TRY_CAST(j.VariantID AS INT),
         TRY_CAST(j.Quantity  AS INT)
@@ -40,16 +42,19 @@ BEGIN
         Quantity    INT '$.Quantity'
     ) j
     WHERE TRY_CAST(j.VariantID AS INT) IS NOT NULL
-      AND TRY_CAST(j.Quantity  AS INT) > 0;
+        AND TRY_CAST(j.Quantity  AS INT) > 0;
 
-    IF NOT EXISTS (SELECT 1 FROM @Lines)
+    IF NOT EXISTS (SELECT 1
+    FROM @Lines)
     BEGIN
         RAISERROR('No valid order lines provided.', 16, 1);
         RETURN;
     END
 
     -- ── Validate customer ────────────────────────────────────────────────────
-    IF NOT EXISTS (SELECT 1 FROM dbo.Customer WHERE CustomerID = @CustomerID AND IsActive = 1)
+    IF NOT EXISTS (SELECT 1
+    FROM dbo.Customer
+    WHERE CustomerID = @CustomerID AND IsActive = 1)
     BEGIN
         RAISERROR('Customer %d not found or inactive.', 16, 1, @CustomerID);
         RETURN;
@@ -68,10 +73,10 @@ BEGIN
             @DiscountValue = DiscountValue
         FROM dbo.Discount
         WHERE DiscountCode  = @DiscountCode
-          AND IsActive      = 1
-          AND ValidFrom    <= SYSUTCDATETIME()
-          AND (ValidTo IS NULL OR ValidTo >= SYSUTCDATETIME())
-          AND (MaxUsageCount IS NULL OR UsageCount < MaxUsageCount);
+            AND IsActive      = 1
+            AND ValidFrom    <= SYSUTCDATETIME()
+            AND (ValidTo IS NULL OR ValidTo >= SYSUTCDATETIME())
+            AND (MaxUsageCount IS NULL OR UsageCount < MaxUsageCount);
 
         IF @DiscountID IS NULL
         BEGIN
@@ -86,43 +91,45 @@ BEGIN
         -- ── Check & lock stock for each line ─────────────────────────────────
         -- UPDLOCK + ROWLOCK: pessimistic lock to prevent concurrent oversell
         DECLARE @StockCheck TABLE (
-            VariantID       INT,
-            AvailableQty    INT,
-            RequestedQty    INT,
-            UnitPrice       DECIMAL(10,2)
+        VariantID    INT,
+        AvailableQty INT,
+        RequestedQty INT,
+        UnitPrice    DECIMAL(10,2)
         );
 
-        INSERT INTO @StockCheck (VariantID, AvailableQty, RequestedQty, UnitPrice)
-        SELECT
-            sl.VariantID,
-            sl.QuantityOnHand,
-            l.Quantity,
-            p.BasePrice + pv.PriceAdjustment AS UnitPrice
-        FROM @Lines l
-        JOIN dbo.StockLevel     sl  ON sl.VariantID = l.VariantID
-        JOIN dbo.ProductVariant pv  ON pv.VariantID = l.VariantID
-        JOIN dbo.Product        p   ON p.ProductID  = pv.ProductID
+        INSERT INTO @StockCheck
+        (VariantID, AvailableQty, RequestedQty, UnitPrice)
+    SELECT
+        sl.VariantID,
+        sl.QuantityOnHand,
+        l.Quantity,
+        p.BasePrice + pv.PriceAdjustment AS UnitPrice
+    FROM @Lines l
+        JOIN dbo.StockLevel     sl ON sl.VariantID = l.VariantID
+        JOIN dbo.ProductVariant pv ON pv.VariantID = l.VariantID
+        JOIN dbo.Product        p ON p.ProductID  = pv.ProductID
         WITH (UPDLOCK, ROWLOCK);
 
         -- ── Validate sufficient stock ─────────────────────────────────────────
         DECLARE @InsufficientVariantID INT;
-        SELECT TOP 1 @InsufficientVariantID = VariantID
-        FROM @StockCheck
-        WHERE AvailableQty < RequestedQty;
+        SELECT TOP 1
+        @InsufficientVariantID = VariantID
+    FROM @StockCheck
+    WHERE AvailableQty < RequestedQty;
 
         IF @InsufficientVariantID IS NOT NULL
         BEGIN
-            RAISERROR('Insufficient stock for VariantID %d.', 16, 1, @InsufficientVariantID);
-            ROLLBACK TRANSACTION PlaceOrder;
-            RETURN;
-        END
+        RAISERROR('Insufficient stock for VariantID %d.', 16, 1, @InsufficientVariantID);
+        ROLLBACK TRANSACTION PlaceOrder;
+        RETURN;
+    END
 
         -- ── Calculate totals ─────────────────────────────────────────────────
         DECLARE @Subtotal       DECIMAL(10,2);
         DECLARE @DiscountAmount DECIMAL(10,2) = 0;
 
         SELECT @Subtotal = SUM(UnitPrice * RequestedQty)
-        FROM @StockCheck;
+    FROM @StockCheck;
 
         SET @DiscountAmount = CASE @DiscountType
             WHEN 'PERCENTAGE'   THEN ROUND(@Subtotal * @DiscountValue / 100, 2)
@@ -133,11 +140,13 @@ BEGIN
         SET @TotalAmount = @Subtotal - @DiscountAmount;
 
         -- ── Insert Order header ───────────────────────────────────────────────
-        INSERT INTO dbo.[Order] (
-            CustomerID, ShippingAddressID, DiscountID,
-            SubtotalAmount, DiscountAmount, TotalAmount
+        INSERT INTO dbo.[Order]
+        (
+        CustomerID, ShippingAddressID, DiscountID,
+        SubtotalAmount, DiscountAmount, TotalAmount
         )
-        VALUES (
+    VALUES
+        (
             @CustomerID, @ShippingAddressID, @DiscountID,
             @Subtotal, @DiscountAmount, @TotalAmount
         );
@@ -145,13 +154,16 @@ BEGIN
         SET @OrderID = SCOPE_IDENTITY();
 
         -- ── Insert OrderLines ─────────────────────────────────────────────────
-        INSERT INTO dbo.OrderLine (OrderID, VariantID, Quantity, UnitPrice)
-        SELECT @OrderID, VariantID, RequestedQty, UnitPrice
-        FROM @StockCheck;
+        INSERT INTO dbo.OrderLine
+        (OrderID, VariantID, Quantity, UnitPrice)
+    SELECT @OrderID, VariantID, RequestedQty, UnitPrice
+    FROM @StockCheck;
 
-        -- ── Deduct stock (MERGE for atomic upsert-style update) ───────────────
+        -- ── Deduct stock ──────────────────────────────────────────────────────
+        -- Added clean processing separation parameters to prevent compilation errors
         MERGE dbo.StockLevel AS target
-        USING (SELECT VariantID, RequestedQty FROM @StockCheck) AS source
+        USING (SELECT VariantID, RequestedQty
+    FROM @StockCheck) AS source
             ON target.VariantID = source.VariantID
         WHEN MATCHED THEN
             UPDATE SET
@@ -159,18 +171,19 @@ BEGIN
                 UpdatedAt      = SYSUTCDATETIME();
 
         -- ── Record stock movements ────────────────────────────────────────────
-        INSERT INTO dbo.StockMovement (
-            StockLevelID, MovementType, QuantityChange, QuantityAfter,
-            ReferenceID, ReferenceType
+        INSERT INTO dbo.StockMovement
+        (
+        StockLevelID, MovementType, QuantityChange, QuantityAfter,
+        ReferenceID, ReferenceType
         )
-        SELECT
-            sl.StockLevelID,
-            'SALE',
-            -sc.RequestedQty,
-            sl.QuantityOnHand,  -- already deducted above
-            @OrderID,
-            'ORDER'
-        FROM @StockCheck sc
+    SELECT
+        sl.StockLevelID,
+        'SALE',
+        -sc.RequestedQty,
+        sl.QuantityOnHand,
+        @OrderID,
+        'ORDER'
+    FROM @StockCheck sc
         JOIN dbo.StockLevel sl ON sl.VariantID = sc.VariantID;
 
         -- ── Increment discount usage counter ──────────────────────────────────
@@ -231,11 +244,11 @@ BEGIN
     DECLARE @ValidTransition BIT = 0;
 
     SET @ValidTransition = CASE
-        WHEN @CurrentStatus = 'PENDING'     AND @NewStatus IN ('CONFIRMED','CANCELLED')    THEN 1
-        WHEN @CurrentStatus = 'CONFIRMED'   AND @NewStatus IN ('PROCESSING','CANCELLED')   THEN 1
-        WHEN @CurrentStatus = 'PROCESSING'  AND @NewStatus IN ('SHIPPED','CANCELLED')      THEN 1
-        WHEN @CurrentStatus = 'SHIPPED'     AND @NewStatus IN ('DELIVERED','RETURNED')     THEN 1
-        WHEN @CurrentStatus = 'DELIVERED'   AND @NewStatus = 'REFUNDED'                    THEN 1
+        WHEN @CurrentStatus = 'PENDING' AND @NewStatus IN ('CONFIRMED','CANCELLED')    THEN 1
+        WHEN @CurrentStatus = 'CONFIRMED' AND @NewStatus IN ('PROCESSING','CANCELLED')   THEN 1
+        WHEN @CurrentStatus = 'PROCESSING' AND @NewStatus IN ('SHIPPED','CANCELLED')      THEN 1
+        WHEN @CurrentStatus = 'SHIPPED' AND @NewStatus IN ('DELIVERED','RETURNED')     THEN 1
+        WHEN @CurrentStatus = 'DELIVERED' AND @NewStatus = 'REFUNDED'                    THEN 1
         ELSE 0
     END;
 
@@ -258,24 +271,28 @@ BEGIN
         -- Auto-create shipment record when order is dispatched
         IF @NewStatus = 'SHIPPED' AND @CourierID IS NOT NULL
         BEGIN
-            INSERT INTO dbo.Shipment (OrderID, CourierID, TrackingNumber, ShipmentStatus)
-            VALUES (@OrderID, @CourierID, @TrackingNumber, 'IN_TRANSIT');
+        INSERT INTO dbo.Shipment
+            (OrderID, CourierID, TrackingNumber, ShipmentStatus)
+        VALUES
+            (@OrderID, @CourierID, @TrackingNumber, 'IN_TRANSIT');
 
-            DECLARE @ShipmentID INT = SCOPE_IDENTITY();
+        DECLARE @ShipmentID INT = SCOPE_IDENTITY();
 
-            INSERT INTO dbo.ShipmentEvent (ShipmentID, EventStatus, EventNote)
-            VALUES (@ShipmentID, 'IN_TRANSIT', 'Order dispatched from warehouse');
-        END
+        INSERT INTO dbo.ShipmentEvent
+            (ShipmentID, EventStatus, EventNote)
+        VALUES
+            (@ShipmentID, 'IN_TRANSIT', 'Order dispatched from warehouse');
+    END
 
         -- Auto-close payment capture on delivery
         IF @NewStatus = 'DELIVERED'
         BEGIN
-            UPDATE dbo.Payment
+        UPDATE dbo.Payment
             SET PaymentStatus = 'CAPTURED',
                 PaidAt        = SYSUTCDATETIME()
             WHERE OrderID     = @OrderID
-              AND PaymentStatus = 'AUTHORISED';
-        END
+            AND PaymentStatus = 'AUTHORISED';
+    END
 
         COMMIT TRANSACTION;
 
@@ -331,28 +348,32 @@ BEGIN
         WHERE ol.OrderID = @OrderID;
 
         -- ── Record stock movement ─────────────────────────────────────────────
-        INSERT INTO dbo.StockMovement (
-            StockLevelID, MovementType, QuantityChange, QuantityAfter,
-            ReferenceID, ReferenceType, Notes
+        INSERT INTO dbo.StockMovement
+        (
+        StockLevelID, MovementType, QuantityChange, QuantityAfter,
+        ReferenceID, ReferenceType, Notes
         )
-        SELECT
-            sl.StockLevelID,
-            'RETURN',
-            ol.Quantity,
-            sl.QuantityOnHand,
-            @OrderID,
-            'RETURN',
-            @Reason
-        FROM dbo.OrderLine  ol
+    SELECT
+        sl.StockLevelID,
+        'RETURN',
+        ol.Quantity,
+        sl.QuantityOnHand,
+        @OrderID,
+        'RETURN',
+        @Reason
+    FROM dbo.OrderLine  ol
         JOIN dbo.StockLevel sl ON sl.VariantID = ol.VariantID
-        WHERE ol.OrderID = @OrderID;
+    WHERE ol.OrderID = @OrderID;
 
         -- ── Reverse loyalty points ────────────────────────────────────────────
         DECLARE @PointsToReverse INT = FLOOR(@TotalAmount / 10);
         IF @PointsToReverse > 0
-            UPDATE dbo.Customer
-            SET LoyaltyPoints = GREATEST(0, LoyaltyPoints - @PointsToReverse)
+        BEGIN
+        -- Replaced GREATEST to avoid native compatibility runtime drops
+        UPDATE dbo.Customer
+            SET LoyaltyPoints = CASE WHEN (LoyaltyPoints - @PointsToReverse) < 0 THEN 0 ELSE (LoyaltyPoints - @PointsToReverse) END
             WHERE CustomerID  = @CustomerID;
+    END
 
         -- ── Update order and payment status ──────────────────────────────────
         UPDATE dbo.[Order]
