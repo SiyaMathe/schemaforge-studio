@@ -1,5 +1,8 @@
-name: CI — SchemaForge Studio
 
+name: CI — SchemaForge Studio
+concurrency:
+  group: pipeline-override-${{ github.run_id }}
+  cancel-in-progress: false
 on:
   push:
     branches: ["main", "develop"]
