@@ -110,11 +110,10 @@ GO
 
 -- =============================================================================
 -- SP 2: Refresh the Gold-layer SalesSummary table
---       Idempotent MERGE — safe to run repeatedly (e.g. nightly job)
---       Demonstrates: multi-CTE MERGE, date boundary logic
 -- =============================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_RefreshSalesSummary
-    @SummaryDate    DATE = NULL     -- defaults to yesterday
+    @SummaryDate    DATE = NULL
+-- defaults to yesterday
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -129,8 +128,11 @@ BEGIN
     BEGIN TRANSACTION;
     BEGIN TRY
 
-        -- Multi-CTE: compute aggregates then MERGE into summary table
-        WITH OrderFacts AS (
+        -- Multi-CTE: replaced reserved keyword alias 'of' with 'facts'
+        WITH
+        OrderFacts
+        AS
+        (
             SELECT
                 o.OrderID,
                 o.SubtotalAmount,
@@ -138,12 +140,14 @@ BEGIN
                 o.TotalAmount,
                 addr.CityID
             FROM dbo.[Order]  o
-            JOIN dbo.Address  addr ON addr.AddressID = o.ShippingAddressID
+                JOIN dbo.Address  addr ON addr.AddressID = o.ShippingAddressID
             WHERE o.PlacedAt >= @DayStart
-              AND o.PlacedAt <  @DayEnd
-              AND o.OrderStatus NOT IN ('CANCELLED')
+                AND o.PlacedAt <  @DayEnd
+                AND o.OrderStatus NOT IN ('CANCELLED')
         ),
-        LineFacts AS (
+        LineFacts
+        AS
+        (
             SELECT
                 ol.OrderID,
                 pv.ProductID,
@@ -152,31 +156,34 @@ BEGIN
                 SUM(ol.Quantity)              AS LineItemCount,
                 SUM(ol.LineTotal)             AS LineRevenue
             FROM dbo.OrderLine      ol
-            JOIN dbo.ProductVariant pv ON pv.VariantID  = ol.VariantID
-            JOIN dbo.Product        p  ON p.ProductID   = pv.ProductID
-            JOIN OrderFacts         of ON of.OrderID    = ol.OrderID
+                JOIN dbo.ProductVariant pv ON pv.VariantID  = ol.VariantID
+                JOIN dbo.Product        p ON p.ProductID   = pv.ProductID
+                JOIN OrderFacts         facts ON facts.OrderID = ol.OrderID
             GROUP BY ol.OrderID, pv.ProductID, p.VendorID, p.CategoryID
         ),
-        Summary AS (
+        Summary
+        AS
+        (
             SELECT
                 lf.VendorID,
                 lf.CategoryID,
                 c.ProvinceID,
-                COUNT(DISTINCT lf.OrderID)              AS OrderCount,
-                SUM(lf.LineItemCount)                   AS LineItemCount,
-                SUM(of.SubtotalAmount)                  AS GrossRevenue,
-                SUM(of.DiscountAmount)                  AS DiscountTotal,
-                SUM(of.TotalAmount)                     AS NetRevenue,
-                SUM(of.TotalAmount * v.CommissionRate / 100) AS Commission
+                COUNT(DISTINCT lf.OrderID)                    AS OrderCount,
+                SUM(lf.LineItemCount)                         AS LineItemCount,
+                SUM(facts.SubtotalAmount)                     AS GrossRevenue,
+                SUM(facts.DiscountAmount)                     AS DiscountTotal,
+                SUM(facts.TotalAmount)                        AS NetRevenue,
+                SUM(facts.TotalAmount * v.CommissionRate / 100) AS Commission
             FROM LineFacts          lf
-            JOIN OrderFacts         of  ON of.OrderID    = lf.OrderID
-            JOIN dbo.City           c   ON c.CityID      = of.CityID
-            JOIN dbo.Vendor         v   ON v.VendorID    = lf.VendorID
+                JOIN OrderFacts         facts ON facts.OrderID   = lf.OrderID
+                JOIN dbo.City           c ON c.CityID      = facts.CityID
+                JOIN dbo.Vendor         v ON v.VendorID    = lf.VendorID
             GROUP BY lf.VendorID, lf.CategoryID, c.ProvinceID
         )
         MERGE dbo.SalesSummary AS target
         USING (
-            SELECT @SummaryDate AS SummaryDate, * FROM Summary
+            SELECT @SummaryDate AS SummaryDate, *
+    FROM Summary
         ) AS source
         ON  target.SummaryDate  = source.SummaryDate
         AND target.VendorID     = source.VendorID
@@ -204,12 +211,12 @@ BEGIN
 
         -- Return summary of what was written
         SELECT
-            @SummaryDate        AS SummaryDate,
-            COUNT(*)            AS RowsUpserted,
-            SUM(NetRevenue)     AS TotalNetRevenue,
-            SUM(OrderCount)     AS TotalOrders
-        FROM dbo.SalesSummary
-        WHERE SummaryDate = @SummaryDate;
+        @SummaryDate        AS SummaryDate,
+        COUNT(*)            AS RowsUpserted,
+        SUM(NetRevenue)     AS TotalNetRevenue,
+        SUM(OrderCount)     AS TotalOrders
+    FROM dbo.SalesSummary
+    WHERE SummaryDate = @SummaryDate;
 
     END TRY
     BEGIN CATCH
@@ -219,5 +226,5 @@ BEGIN
 END;
 GO
 
-PRINT 'Reporting procedures created.';
+PRINT 'Reporting procedures created successfully.';
 GO
