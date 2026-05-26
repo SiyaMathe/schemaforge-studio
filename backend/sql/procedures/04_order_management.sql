@@ -108,7 +108,7 @@ BEGIN
         JOIN dbo.StockLevel     sl ON sl.VariantID = l.VariantID
         JOIN dbo.ProductVariant pv ON pv.VariantID = l.VariantID
         JOIN dbo.Product        p ON p.ProductID  = pv.ProductID
-        WITH (UPDLOCK, ROWLOCK);
+            WITH (UPDLOCK, ROWLOCK);
 
         -- ── Validate sufficient stock ─────────────────────────────────────────
         DECLARE @InsufficientVariantID INT;
@@ -149,7 +149,7 @@ BEGIN
         (
             @CustomerID, @ShippingAddressID, @DiscountID,
             @Subtotal, @DiscountAmount, @TotalAmount
-        );
+            );
 
         SET @OrderID = SCOPE_IDENTITY();
 
@@ -160,7 +160,6 @@ BEGIN
     FROM @StockCheck;
 
         -- ── Deduct stock ──────────────────────────────────────────────────────
-        -- Added clean processing separation parameters to prevent compilation errors
         MERGE dbo.StockLevel AS target
         USING (SELECT VariantID, RequestedQty
     FROM @StockCheck) AS source
@@ -168,7 +167,7 @@ BEGIN
         WHEN MATCHED THEN
             UPDATE SET
                 QuantityOnHand = target.QuantityOnHand - source.RequestedQty,
-                UpdatedAt      = SYSUTCDATETIME();
+                UpdatedAt      = SYSUTCDATETIME(); -- <-- Safe termination added here
 
         -- ── Record stock movements ────────────────────────────────────────────
         INSERT INTO dbo.StockMovement
@@ -244,7 +243,7 @@ BEGIN
     DECLARE @ValidTransition BIT = 0;
 
     SET @ValidTransition = CASE
-        WHEN @CurrentStatus = 'PENDING' AND @NewStatus IN ('CONFIRMED','CANCELLED')    THEN 1
+        WHEN @CurrentStatus = 'PENDING' AND @NewStatus IN ('CONFIRMED','CANCELLED')     THEN 1
         WHEN @CurrentStatus = 'CONFIRMED' AND @NewStatus IN ('PROCESSING','CANCELLED')   THEN 1
         WHEN @CurrentStatus = 'PROCESSING' AND @NewStatus IN ('SHIPPED','CANCELLED')      THEN 1
         WHEN @CurrentStatus = 'SHIPPED' AND @NewStatus IN ('DELIVERED','RETURNED')     THEN 1
@@ -288,9 +287,9 @@ BEGIN
         IF @NewStatus = 'DELIVERED'
         BEGIN
         UPDATE dbo.Payment
-            SET PaymentStatus = 'CAPTURED',
-                PaidAt        = SYSUTCDATETIME()
-            WHERE OrderID     = @OrderID
+                SET PaymentStatus = 'CAPTURED',
+                    PaidAt        = SYSUTCDATETIME()
+                WHERE OrderID     = @OrderID
             AND PaymentStatus = 'AUTHORISED';
     END
 
@@ -369,10 +368,9 @@ BEGIN
         DECLARE @PointsToReverse INT = FLOOR(@TotalAmount / 10);
         IF @PointsToReverse > 0
         BEGIN
-        -- Replaced GREATEST to avoid native compatibility runtime drops
         UPDATE dbo.Customer
-            SET LoyaltyPoints = CASE WHEN (LoyaltyPoints - @PointsToReverse) < 0 THEN 0 ELSE (LoyaltyPoints - @PointsToReverse) END
-            WHERE CustomerID  = @CustomerID;
+                SET LoyaltyPoints = CASE WHEN (LoyaltyPoints - @PointsToReverse) < 0 THEN 0 ELSE (LoyaltyPoints - @PointsToReverse) END
+                WHERE CustomerID  = @CustomerID;
     END
 
         -- ── Update order and payment status ──────────────────────────────────
