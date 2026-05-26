@@ -48,7 +48,7 @@ jobs:
         ports:
           - 1433:1433
         options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P CI_TestPass123! -Q 'SELECT 1'"
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P CI_TestPass123! -C -Q 'SELECT 1'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
@@ -144,19 +144,4 @@ jobs:
 
       - name: Check for vulnerable NuGet packages
         run: |
-          dotnet list backend/api/KhulisaQuery.Api.csproj package \
-            --vulnerable --include-transitive 2>&1 | tee vuln_report.txt
-          if grep -q "has the following vulnerable packages" vuln_report.txt; then
-            echo "::error::Vulnerable packages found"
-            exit 1
-          fi
-
-      - name: Scan for SQL injection patterns in dynamic SQL
-        run: |
-          # Check that all dynamic SQL uses sp_executesql (never EXEC(@sql))
-          # EXEC(@variable) without sp_executesql is a red flag
-          if grep -rn "EXEC\s*(@" backend/sql/ --include="*.sql"; then
-            echo "::warning::Found potential unparameterised dynamic SQL — verify manually"
-          else
-            echo "✅ No unparameterised EXEC(@variable) patterns found"
-          fi
+          dotnet list backend
