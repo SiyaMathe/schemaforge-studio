@@ -1,8 +1,3 @@
--- =============================================================================
--- SchemaForge Studio — Khulisa Commerce
--- Indexes & Performance Constraints
--- =============================================================================
-
 USE KhulisaCommerce;
 GO
 
