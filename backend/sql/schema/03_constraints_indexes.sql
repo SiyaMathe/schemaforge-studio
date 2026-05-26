@@ -8,6 +8,12 @@
 USE KhulisaCommerce;
 GO
 
+-- Environmental settings strictly required for creating indexes over tables
+-- containing persisted computed columns or filtered constraints.
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
+
 -- =============================================================================
 -- CUSTOMER INDEXES
 -- =============================================================================
@@ -156,7 +162,7 @@ GO
 -- (columnstore compresses and batch-processes aggregations extremely efficiently)
 CREATE NONCLUSTERED COLUMNSTORE INDEX CCI_SalesSummary
     ON dbo.SalesSummary (SummaryDate, VendorID, CategoryID, ProvinceID,
-                          OrderCount, LineItemCount, GrossRevenue, NetRevenue, Commission);
+                         OrderCount, LineItemCount, GrossRevenue, NetRevenue, Commission);
 GO
 
 PRINT 'Indexes and constraints applied successfully.';
