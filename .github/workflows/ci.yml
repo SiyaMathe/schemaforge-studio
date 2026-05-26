@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install sqlfluff
-        run: pip install sqlfluff sqlfluff-templater-jinja
+        run: pip install sqlfluff sqlfluff
 
       - name: Lint T-SQL files
         run: |
