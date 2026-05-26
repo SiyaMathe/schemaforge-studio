@@ -85,17 +85,19 @@ GO
 -- INVENTORY INDEXES
 -- =============================================================================
 
+-- Stock level lookup by warehouse + variant
 CREATE NONCLUSTERED INDEX IX_StockLevel_Warehouse_Variant
     ON dbo.StockLevel (WarehouseID, VariantID)
     INCLUDE (QuantityOnHand, ReorderPoint);
 GO
 
+-- Low-stock alert (Optimized Composite Coverage Scan — Option A)
 CREATE NONCLUSTERED INDEX IX_StockLevel_LowStock
-    ON dbo.StockLevel (QuantityOnHand)
-    INCLUDE (WarehouseID, VariantID, ReorderPoint)
-    WHERE QuantityOnHand <= ReorderPoint;
+    ON dbo.StockLevel (QuantityOnHand, ReorderPoint)
+    INCLUDE (WarehouseID, VariantID);
 GO
 
+-- Stock movement audit trail
 CREATE NONCLUSTERED INDEX IX_StockMovement_StockLevel_Date
     ON dbo.StockMovement (StockLevelID, MovedAt DESC)
     INCLUDE (MovementType, QuantityChange, QuantityAfter);
