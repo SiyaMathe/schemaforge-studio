@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "ms-mssql.mssql",
+    "mongodb.mongodb-vscode",
+    "ms-dotnettools.csharp",
+    "ms-dotnettools.csdevkit",
+    "ms-azuretools.vscode-azureappservice",
+    "ms-azuretools.vscode-azureresourcegroups",
+    "ms-azuretools.vscode-bicep",
+    "github.vscode-github-actions",
+    "github.copilot",
+    "eamodio.gitlens",
+    "ms-vscode-remote.remote-containers",
+    "redhat.vscode-yaml",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}

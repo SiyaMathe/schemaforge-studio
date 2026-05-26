@@ -1,0 +1,33 @@
+# Secrets & environment
+.env
+*.env.local
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node
+node_modules/
+dist/
+
+# VS Code (keep extension/settings recommendations)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQL Server local files
+*.mdf
+*.ldf
+*.bak
+
+# MongoDB dumps
+*.bson
+dump/

@@ -1,0 +1,75 @@
+version: '3.9'
+
+services:
+  # SQL Server — mirrors Azure SQL Database behaviour
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: schemaforge-sql
+    environment:
+      SA_PASSWORD:  "YourPassword123!"
+      ACCEPT_EULA:  "Y"
+      MSSQL_PID:    "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: >
+        /opt/mssql-tools/bin/sqlcmd
+        -S localhost -U sa -P "YourPassword123!"
+        -Q "SELECT 1" -b
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # MongoDB — for the NoSQL showcase
+  mongodb:
+    image: mongo:7.0
+    container_name: schemaforge-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: YourPassword123!
+      MONGO_INITDB_DATABASE:     khulisa_nosql
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+
+  # Schema initialiser — runs all SQL files then exits
+  db-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: schemaforge-db-init
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - ./backend/sql:/sql
+    command: >
+      bash -c "
+        echo 'Applying KhulisaCommerce schema...' &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -i /sql/schema/02_schema_ddl.sql -b &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -d KhulisaCommerce -i /sql/schema/03_constraints_indexes.sql -b &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -d KhulisaCommerce -i /sql/procedures/04_order_management.sql -b &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -d KhulisaCommerce -i /sql/procedures/05_inventory_management.sql -b &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -d KhulisaCommerce -i /sql/procedures/06_reporting_procedures.sql -b &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -d KhulisaCommerce -i /sql/views/07_operational_views.sql -b &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourPassword123!'
+          -d KhulisaCommerce -i /sql/views/08_analytics_views.sql -b &&
+        echo 'Schema applied successfully!'
+      "
+    restart: "no"
+
+volumes:
+  sqlserver-data:
+  mongodb-data:
+
+networks:
+  default:
+    name: schemaforge-local

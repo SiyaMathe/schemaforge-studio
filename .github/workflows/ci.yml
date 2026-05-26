@@ -1,0 +1,161 @@
+name: CI — SchemaForge Studio
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # ── SQL Linting ─────────────────────────────────────────────────────────────
+  sql-lint:
+    name: SQL Lint & Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sqlfluff
+        run: pip install sqlfluff sqlfluff-templater-jinja
+
+      - name: Lint T-SQL files
+        run: |
+          sqlfluff lint backend/sql/ \
+            --dialect tsql \
+            --templater raw \
+            --exclude-rules LT12,LT09,RF04
+
+      - name: Lint MongoDB JS files
+        run: |
+          npm install -g jshint
+          jshint backend/sql/nosql/ --esversion=11
+
+  # ── Spin up SQL Server and run tests ────────────────────────────────────────
+  sql-tests:
+    name: SQL Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          SA_PASSWORD: "CI_TestPass123!"
+          ACCEPT_EULA: "Y"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P CI_TestPass123! -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install sqlcmd
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
+            | sudo tee /etc/apt/sources.list.d/msprod.list
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+
+      - name: Apply schema
+        env:
+          SQLCMDPASSWORD: "CI_TestPass123!"
+        run: |
+          for f in \
+            backend/sql/schema/02_schema_ddl.sql \
+            backend/sql/schema/03_constraints_indexes.sql \
+            backend/sql/procedures/04_order_management.sql \
+            backend/sql/procedures/05_inventory_management.sql \
+            backend/sql/procedures/06_reporting_procedures.sql \
+            backend/sql/views/07_operational_views.sql \
+            backend/sql/views/08_analytics_views.sql; do
+            echo "Applying: $f"
+            /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost,1433 \
+              -U sa \
+              -C \
+              -i "$f" \
+              -b
+          done
+
+      - name: Run normalisation showcase (smoke test)
+        env:
+          SQLCMDPASSWORD: "CI_TestPass123!"
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost,1433 -U sa -C \
+            -i backend/sql/queries/09_normalisation_showcase.sql -b
+
+      - name: Run SQL unit tests
+        env:
+          SQLCMDPASSWORD: "CI_TestPass123!"
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost,1433 -U sa -C \
+            -d KhulisaCommerce \
+            -i tests/sql/run_all_tests.sql -b
+
+      - name: Run analytics queries (smoke test)
+        env:
+          SQLCMDPASSWORD: "CI_TestPass123!"
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost,1433 -U sa -C \
+            -d KhulisaCommerce \
+            -i backend/sql/queries/11_analytics_queries.sql -b
+
+  # ── .NET API build ───────────────────────────────────────────────────────────
+  build-api:
+    name: Build Query API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore & Build
+        run: |
+          dotnet restore backend/api/KhulisaQuery.Api.csproj
+          dotnet build   backend/api/KhulisaQuery.Api.csproj \
+            --configuration Release --no-restore
+
+  # ── Security scanning ────────────────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check for vulnerable NuGet packages
+        run: |
+          dotnet list backend/api/KhulisaQuery.Api.csproj package \
+            --vulnerable --include-transitive 2>&1 | tee vuln_report.txt
+          if grep -q "has the following vulnerable packages" vuln_report.txt; then
+            echo "::error::Vulnerable packages found"
+            exit 1
+          fi
+
+      - name: Scan for SQL injection patterns in dynamic SQL
+        run: |
+          # Check that all dynamic SQL uses sp_executesql (never EXEC(@sql))
+          # EXEC(@variable) without sp_executesql is a red flag
+          if grep -rn "EXEC\s*(@" backend/sql/ --include="*.sql"; then
+            echo "::warning::Found potential unparameterised dynamic SQL — verify manually"
+          else
+            echo "✅ No unparameterised EXEC(@variable) patterns found"
+          fi

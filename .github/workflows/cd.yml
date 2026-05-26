@@ -1,0 +1,134 @@
+name: CD — Deploy SchemaForge Studio
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  # ── Deploy Azure SQL schema + procedures ─────────────────────────────────────
+  deploy-database:
+    name: Deploy Database (Azure SQL)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install sqlcmd
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
+            | sudo tee /etc/apt/sources.list.d/msprod.list
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+
+      - name: Allow CI runner IP on Azure SQL firewall
+        run: |
+          MY_IP=$(curl -s https://api.ipify.org)
+          az sql server firewall-rule create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --server ${{ secrets.SQL_SERVER_NAME }} \
+            --name ci-runner-$(date +%s) \
+            --start-ip-address $MY_IP \
+            --end-ip-address $MY_IP
+
+      - name: Apply schema migrations in order
+        env:
+          SQLCMDPASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+        run: |
+          SQL_SERVER="${{ secrets.SQL_SERVER_NAME }}.database.windows.net"
+
+          files=(
+            "backend/sql/schema/02_schema_ddl.sql"
+            "backend/sql/schema/03_constraints_indexes.sql"
+            "backend/sql/procedures/04_order_management.sql"
+            "backend/sql/procedures/05_inventory_management.sql"
+            "backend/sql/procedures/06_reporting_procedures.sql"
+            "backend/sql/views/07_operational_views.sql"
+            "backend/sql/views/08_analytics_views.sql"
+          )
+
+          for f in "${files[@]}"; do
+            echo "Deploying: $f"
+            /opt/mssql-tools18/bin/sqlcmd \
+              -S "$SQL_SERVER" \
+              -U "${{ secrets.SQL_ADMIN_USER }}" \
+              -d "KhulisaCommerce" \
+              -i "$f" \
+              -b
+            echo "✅ $f applied"
+          done
+
+      - name: Remove CI runner firewall rule
+        if: always()
+        run: |
+          az sql server firewall-rule list \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --server ${{ secrets.SQL_SERVER_NAME }} \
+            --query "[?starts_with(name, 'ci-runner-')].name" -o tsv \
+          | xargs -I{} az sql server firewall-rule delete \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --server ${{ secrets.SQL_SERVER_NAME }} \
+              --name {}
+
+  # ── Deploy Query API to Azure App Service ────────────────────────────────────
+  deploy-api:
+    name: Deploy Query API
+    runs-on: ubuntu-latest
+    needs: deploy-database
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish API
+        run: |
+          dotnet publish backend/api/KhulisaQuery.Api.csproj \
+            --configuration Release \
+            --output ./api-publish
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          package:  './api-publish'
+
+  # ── Smoke test post-deployment ───────────────────────────────────────────────
+  smoke-test:
+    name: Post-Deploy Smoke Test
+    runs-on: ubuntu-latest
+    needs: [deploy-database, deploy-api]
+    environment: production
+    steps:
+      - name: API health check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/health")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Health check failed — HTTP $STATUS"
+            exit 1
+          fi
+          echo "✅ API healthy — HTTP $STATUS"
+
+      - name: Verify Swagger docs are accessible
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/swagger")
+          echo "Swagger endpoint: HTTP $STATUS"

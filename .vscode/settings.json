@@ -1,0 +1,28 @@
+{
+  "mssql.connections": [
+    {
+      "server": "localhost,1433",
+      "database": "KhulisaCommerce",
+      "authenticationType": "SqlLogin",
+      "user": "sa",
+      "password": "",
+      "savePassword": false,
+      "profileName": "SchemaForge Local (Docker)",
+      "encrypt": false,
+      "trustServerCertificate": true,
+      "groupId": "ROOT",
+      "id": "2f86f78d-f0d2-4b0a-9808-ff3f46cf747a"
+    }
+  ],
+  "mssql.intelliSense.enableIntelliSense": true,
+  "mssql.intelliSense.enableErrorChecking": true,
+  "mssql.intelliSense.enableSuggestions": true,
+  "mssql.intelliSense.enableQuickInfo": true,
+  "mssql.format.alignColumnDefinitionsInColumns": true,
+  "mssql.format.datatypeCasing": "uppercase",
+  "mssql.format.keywordCasing": "uppercase",
+  "[sql]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-mssql.mssql"
+  }
+}
