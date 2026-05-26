@@ -36,6 +36,7 @@ jobs:
           # Search only where your primary backend scripts sit, ignoring raw queries
           find backend/nosql/ -name "*.js" 2>/dev/null | xargs -r jshint --jqv || true
         continue-on-error: true
+
   # ── Spin up SQL Server and run tests ────────────────────────────────────────
   sql-tests:
     name: SQL Integration Tests
@@ -83,6 +84,7 @@ jobs:
               -S localhost,1433 \
               -U sa \
               -C \
+              -I \
               -i "$f" \
               -b
           done
@@ -92,7 +94,7 @@ jobs:
           SQLCMDPASSWORD: "CI_TestPass123!"
         run: |
           /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost,1433 -U sa -C \
+            -S localhost,1433 -U sa -C -I \
             -i backend/sql/queries/09_normalisation_showcase.sql -b
 
       - name: Run SQL unit tests
@@ -100,7 +102,7 @@ jobs:
           SQLCMDPASSWORD: "CI_TestPass123!"
         run: |
           /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost,1433 -U sa -C \
+            -S localhost,1433 -U sa -C -I \
             -d KhulisaCommerce \
             -i tests/sql/run_all_tests.sql -b
 
@@ -109,7 +111,7 @@ jobs:
           SQLCMDPASSWORD: "CI_TestPass123!"
         run: |
           /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost,1433 -U sa -C \
+            -S localhost,1433 -U sa -C -I \
             -d KhulisaCommerce \
             -i backend/sql/queries/11_analytics_queries.sql -b
 
@@ -145,4 +147,4 @@ jobs:
 
       - name: Check for vulnerable NuGet packages
         run: |
-          dotnet list backend
+          dotnet list backend/api/KhulisaQuery.Api.csproj package --vulnerable
