@@ -9,7 +9,7 @@
 
 SchemaForge Studio is a full **database engineering showcase** built around a fictional South African e-commerce & logistics platform called **Khulisa Commerce**. It demonstrates every layer of professional database work — from initial ERD and normalisation through to production-grade stored procedures, analytics views, and a REST query API.
 
-The project is structured so each folder is a standalone, runnable artefact. A recruiter or senior engineer can open any SQL file and immediately see production-level thinking.
+
 
 ---
 
