@@ -9,10 +9,42 @@
 
 SchemaForge Studio is a full **database engineering showcase** built around a fictional South African e-commerce & logistics platform called **Khulisa Commerce**. It demonstrates every layer of professional database work — from initial ERD and normalisation through to production-grade stored procedures, analytics views, and a REST query API.
 
+---
 
+## 💡 Engineering Problem & Impact
+
+### The Problem
+Traditional database portfolios often lack the depth required to demonstrate real-world engineering competency. This project was built to address three specific gaps:
+* **Bridging Design and Reality:** Moving beyond simple schemas to implement 3NF/BCNF designs that account for complex business constraints and auditability.
+* **Production-Grade Reliability:** Demonstrating that database code requires the same rigour as application code—utilizing pessimistic concurrency, atomic transactions, and automated integration testing.
+* **The Analytics Gap:** Implementing professional BI layers that transform raw operational data into actionable strategic insights.
+
+### The Impact
+* **High-Integrity Schema:** 20+ tables designed for high-concurrency with strict 3NF compliance.
+* **Automated Quality Gates:** A CI/CD pipeline that provisions real SQL Server containers on every PR to validate system integrity via integration tests.
+* **Performance Optimization:** Implementation of advanced indexing (Columnstore, Filtered, Composite) and sophisticated window functions to handle complex reporting at scale.
 
 ---
 
+## 🗄️ Domain Model — Khulisa Commerce
+
+Khulisa Commerce is a multi-vendor South African e-commerce and last-mile delivery platform.
+
+### Enterprise ERD
+![Khulisa Commerce ERD](master%20-%20KhulisaCommerce%20-%20dbo.jpg)
+
+### Schema Scope
+| Domain | Entities |
+|--------|----------|
+| Users & Auth | Customer, Vendor, Address, Role |
+| Catalogue | Category, Product, ProductVariant, ProductImage |
+| Orders | Order, OrderLine, OrderStatus, Payment, Discount |
+| Inventory | Warehouse, StockLevel, StockMovement |
+| Delivery | Courier, Shipment, ShipmentEvent, DeliveryZone |
+| Reviews | Review, ReviewHelpful |
+| Analytics | SalesSummary (Gold layer) |
+
+---
 ## 📁 Project Structure
 
 ```
