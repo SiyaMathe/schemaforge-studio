@@ -31,7 +31,7 @@ Traditional database portfolios often lack the depth required to demonstrate rea
 Khulisa Commerce is a multi-vendor South African e-commerce and last-mile delivery platform.
 
 ### Enterprise ERD
-![Khulisa Commerce ERD](./master%20-%20KhulisaCommerce%20-%20dbo.jpg)
+![Khulisa Commerce ERD](master%20-%20KhulisaCommerce%20-%20dbo.png)
 ### Schema Scope
 | Domain | Entities |
 |--------|----------|
